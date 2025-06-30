@@ -1,9 +1,18 @@
 import argparse
 # from dataclasses import dataclass
 from langchain_community.vectorstores import Chroma
-from langchain_openai import OpenAIEmbeddings
-from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+from langchain_google_vertexai import VertexAIEmbeddings
+from langchain_google_vertexai import ChatVertexAI
+from langchain_core.prompts import ChatPromptTemplate
+from dotenv import load_dotenv
+import os
+
+# Load environment variables
+load_dotenv()
+
+# Set up GCP project ID - you'll need to set this in your .env file
+PROJECT_ID = os.environ.get('GOOGLE_CLOUD_PROJECT_ID')
+LOCATION = os.environ.get('GOOGLE_CLOUD_LOCATION', 'us-central1')  # Default location
 
 CHROMA_PATH = "chroma"
 
@@ -25,8 +34,12 @@ def main():
     args = parser.parse_args()
     query_text = args.query_text
 
-    # Prepare the DB.
-    embedding_function = OpenAIEmbeddings()
+    # Prepare the DB with Vertex AI embeddings.
+    embedding_function = VertexAIEmbeddings(
+        model_name="textembedding-gecko@001",  # Vertex AI embedding model
+        project=PROJECT_ID,
+        location=LOCATION
+    )
     db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_function)
 
     # Search the DB.
@@ -40,7 +53,12 @@ def main():
     prompt = prompt_template.format(context=context_text, question=query_text)
     print(prompt)
 
-    model = ChatOpenAI()
+    # Use Vertex AI chat model
+    model = ChatVertexAI(
+        model_name="gemini-pro",
+        project=PROJECT_ID,
+        location=LOCATION
+    )
     response_text = model.predict(prompt)
 
     sources = [doc.metadata.get("source", None) for doc, _score in results]
