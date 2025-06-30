@@ -1,28 +1,34 @@
-from langchain_openai import OpenAIEmbeddings
-from langchain.evaluation import load_evaluator
+from langchain_google_vertexai import VertexAIEmbeddings
 from dotenv import load_dotenv
-import openai
 import os
+import numpy as np
 
 # Load environment variables. Assumes that project contains .env file with API keys
 load_dotenv()
-#---- Set OpenAI API key 
-# Change environment variable name from "OPENAI_API_KEY" to the name given in 
-# your .env file.
-openai.api_key = os.environ['OPENAI_API_KEY']
+
+# Set up GCP project ID - you'll need to set this in your .env file
+PROJECT_ID = os.environ.get('GOOGLE_CLOUD_PROJECT_ID')
+LOCATION = os.environ.get('GOOGLE_CLOUD_LOCATION', 'us-central1')  # Default location
 
 def main():
-    # Get embedding for a word.
-    embedding_function = OpenAIEmbeddings()
+    # Get embedding for a word using Vertex AI
+    embedding_function = VertexAIEmbeddings(
+        model_name="textembedding-gecko@001",  # Vertex AI embedding model
+        project=PROJECT_ID,
+        location=LOCATION
+    )
     vector = embedding_function.embed_query("apple")
     print(f"Vector for 'apple': {vector}")
     print(f"Vector length: {len(vector)}")
 
     # Compare vector of two words
-    evaluator = load_evaluator("pairwise_embedding_distance")
     words = ("apple", "iphone")
-    x = evaluator.evaluate_string_pairs(prediction=words[0], prediction_b=words[1])
-    print(f"Comparing ({words[0]}, {words[1]}): {x}")
+    vector1 = embedding_function.embed_query(words[0])
+    vector2 = embedding_function.embed_query(words[1])
+    
+    # Calculate cosine similarity
+    similarity = np.dot(vector1, vector2) / (np.linalg.norm(vector1) * np.linalg.norm(vector2))
+    print(f"Comparing ({words[0]}, {words[1]}): {similarity:.4f}")
 
 
 if __name__ == "__main__":

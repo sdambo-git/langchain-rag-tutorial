@@ -1,13 +1,14 @@
 python-dotenv==1.0.1 # For reading environment variables stored in .env file
-langchain==0.2.2
-langchain-community==0.2.3
-langchain-openai==0.1.8 # For embeddings
-unstructured==0.14.4 # Document loading
+langchain>=0.3,<0.4
+langchain-community>=0.3,<0.4
+langchain-text-splitters>=0.3,<0.4 # For text splitting functionality
+langchain-google-vertexai>=2,<3 # For Vertex AI embeddings on GCP
+unstructured>=0.10.30 # Document loading
 # onnxruntime==1.17.1 # chromadb dependency: on Mac use `conda install onnxruntime -c conda-forge`
 # For Windows users, install Microsoft Visual C++ Build Tools first
 # install onnxruntime before installing `chromadb`
-chromadb==0.5.0 # Vector storage
-openai==1.31.1 # For embeddings
-tiktoken==0.7.0  # For embeddings 
+chromadb>=0.5.20 # Vector storage - updated version
+google-cloud-aiplatform>=1.38.0 # For Vertex AI on GCP
+pydantic>=2,<3 # Pydantic 2 compatibility for LangChain 0.3
 
 # install markdown depenendies with: `pip install "unstructured[md]"` after install the requirements file. Leave this line commented out. 
