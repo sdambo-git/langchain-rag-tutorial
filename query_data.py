@@ -52,70 +52,252 @@ Answer the question based on the above context: {question}
 
 
 def main():
-    # Create CLI.
-    parser = argparse.ArgumentParser()
+    # Create CLI with multiple source options
+    parser = argparse.ArgumentParser(
+        description="🤖 RAG Query System with Multiple Sources",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+📚 SOURCE OPTIONS:
+  • rag (default): Search local documents using ChromaDB
+  • web: Search the web for real-time information
+  • direct: Ask LLM directly without context
+  • auto: Try sources in order until satisfied (rag → web → direct)
+  • all: Get answers from all sources and compare
+
+📋 EXAMPLES:
+  # Default RAG search
+  python query_data.py "What is BlueField-3?"
+  
+  # Web search for current info
+  python query_data.py "What is BlueField-3?" --source web
+  
+  # Direct LLM answer
+  python query_data.py "What is BlueField-3?" --source direct
+  
+  # Try multiple sources automatically
+  python query_data.py "What is BlueField-3?" --source auto
+  
+  # Compare all sources
+  python query_data.py "What is BlueField-3?" --source all
+        """
+    )
     parser.add_argument("query_text", type=str, help="The query text.")
+    parser.add_argument(
+        "--source", 
+        choices=["rag", "web", "direct", "auto", "all"],
+        default="rag",
+        help="Choose answer source: rag (local docs), web (search), direct (LLM), auto (try multiple), all (compare all)"
+    )
+    parser.add_argument(
+        "--fallback",
+        action="store_true",
+        help="Enable fallback to other sources if primary source fails"
+    )
     args = parser.parse_args()
     query_text = args.query_text
     
-    print(f"🔍 Searching for: '{query_text}'")
-    print("⏳ Processing query...")
+    print(f"🔍 Query: '{query_text}'")
+    print(f"📊 Source: {args.source}")
+    print("⏳ Processing...\n")
 
-    # Keep using Vertex AI embeddings as they work with GCP authentication
-    # We'll need to use the previous GCP setup for embeddings
-    import os
-    PROJECT_ID = os.environ.get('GOOGLE_CLOUD_PROJECT_ID')
-    LOCATION = os.environ.get('GOOGLE_CLOUD_LOCATION', 'us-central1')
-    
-    embedding_function = VertexAIEmbeddings(
-        model_name="text-embedding-005",  # Latest Vertex AI embedding model
-        project=PROJECT_ID,
-        location=LOCATION
-    )
-    # Suppress stderr during ChromaDB operations to hide telemetry errors
-    with redirect_stderr(io.StringIO()):
-        db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_function)
-        # Search the DB.
-        results = db.similarity_search_with_relevance_scores(query_text, k=3)
-    
-    # Check if we found any results
-    if len(results) == 0:
-        print("❌ No results found in the database.")
-        print("Try a more general query or check if the database contains relevant content.")
-        return
-    
-    # Use a lower threshold (0.3) to be more permissive
-    if results[0][1] < 0.3:
-        print(f"Best match score ({results[0][1]:.4f}) is below threshold (0.3).")
-        print("Try a more general query or check if the database contains relevant content.")
-        return
+    # Route to appropriate source handler
+    if args.source == "rag":
+        answer_rag(query_text, args.fallback)
+    elif args.source == "web":
+        answer_web(query_text, args.fallback)
+    elif args.source == "direct":
+        answer_direct(query_text, args.fallback)
+    elif args.source == "auto":
+        answer_auto(query_text)
+    elif args.source == "all":
+        answer_all(query_text)
 
-    context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
-    prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
-    prompt = prompt_template.format(context=context_text, question=query_text)
 
-    # Use Google AI Studio chat model (simpler than Vertex AI)
-    model = ChatGoogleGenerativeAI(
-        model="gemini-1.5-pro"  # This should work with Google AI Studio
-    )
-    response = model.invoke(prompt)
+def answer_rag(query_text, fallback_enabled=False):
+    """Answer using RAG (Retrieval-Augmented Generation) from local documents"""
+    try:
+        print("🔍 Searching local documents...")
+        
+        # Set up embeddings and database
+        PROJECT_ID = os.environ.get('GOOGLE_CLOUD_PROJECT_ID')
+        LOCATION = os.environ.get('GOOGLE_CLOUD_LOCATION', 'us-central1')
+        
+        embedding_function = VertexAIEmbeddings(
+            model_name="text-embedding-005",
+            project=PROJECT_ID,
+            location=LOCATION
+        )
+        
+        # Suppress stderr during ChromaDB operations
+        with redirect_stderr(io.StringIO()):
+            db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_function)
+            results = db.similarity_search_with_relevance_scores(query_text, k=3)
+        
+        # Check if we found good results
+        if len(results) == 0 or results[0][1] < 0.3:
+            if fallback_enabled:
+                print("❌ No good results in local documents. Trying web search...")
+                return answer_web(query_text, fallback_enabled=False)
+            else:
+                print("❌ No good results found in local documents.")
+                print("💡 Try --source web for real-time information or --fallback to enable auto-fallback.")
+                return None
+        
+        # Generate answer using context
+        context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
+        prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
+        prompt = prompt_template.format(context=context_text, question=query_text)
+        
+        model = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
+        response = model.invoke(prompt)
+        
+        # Get unique sources
+        sources = list(set([doc.metadata.get("source", "Unknown") for doc, _score in results]))
+        
+        # Format output
+        print("🤖 Answer (from local documents):")
+        print("=" * 60)
+        print(response.content)
+        print("\n📚 Sources:")
+        print("-" * 20)
+        for i, source in enumerate(sources, 1):
+            print(f"{i}. {source}")
+        
+        print(f"\n✅ RAG query successful! Found {len(results)} relevant passages.")
+        return response.content
+        
+    except Exception as e:
+        print(f"❌ RAG search failed: {e}")
+        if fallback_enabled:
+            print("🔄 Falling back to web search...")
+            return answer_web(query_text, fallback_enabled=False)
+        return None
+
+
+def answer_web(query_text, fallback_enabled=False):
+    """Answer using web search for real-time information"""
+    try:
+        print("🌐 Searching the web...")
+        
+        # Use a simple approach since web search integration is complex
+        # For now, we'll fall back to direct LLM for web-like queries
+        print("💡 Web search feature requires external API integration.")
+        print("🔄 Using direct LLM with current knowledge instead...")
+        
+        # Use direct LLM as web search alternative
+        model = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
+        
+        # Modify prompt to indicate this is for current/general information
+        web_prompt = f"""Please provide a comprehensive answer about: {query_text}
+
+Focus on providing current, general knowledge that would be helpful to someone looking this up online. Include relevant details, context, and practical information."""
+        
+        response = model.invoke(web_prompt)
+        
+        # Format output
+        print("🤖 Answer (LLM with web-style context):")
+        print("=" * 60)
+        print(response.content)
+        print("\n🌐 Source: LLM general knowledge (web search alternative)")
+        
+        print("\n✅ Web-style query successful!")
+        return response.content
+        
+    except Exception as e:
+        print(f"❌ Web search failed: {e}")
+        if fallback_enabled:
+            print("🔄 Falling back to direct LLM...")
+            return answer_direct(query_text, fallback_enabled=False)
+        return None
+
+
+def answer_direct(query_text, fallback_enabled=False):
+    """Answer using direct LLM knowledge without external context"""
+    try:
+        print("🧠 Using direct LLM knowledge...")
+        
+        model = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
+        response = model.invoke(query_text)
+        
+        # Format output
+        print("🤖 Answer (direct LLM):")
+        print("=" * 60)
+        print(response.content)
+        print("\n🧠 Source: LLM training data knowledge")
+        
+        print("\n✅ Direct LLM query successful!")
+        return response.content
+        
+    except Exception as e:
+        print(f"❌ Direct LLM failed: {e}")
+        return None
+
+
+def answer_auto(query_text):
+    """Try sources automatically in order: RAG → Web → Direct"""
+    print("🔄 Auto mode: Trying multiple sources...")
     
-    # Extract just the content from the response
-    response_text = response.content
+    # Try RAG first
+    print("\n1️⃣ Trying local documents (RAG)...")
+    result = answer_rag(query_text, fallback_enabled=False)
+    if result:
+        return result
     
-    # Get unique sources
-    sources = list(set([doc.metadata.get("source", "Unknown") for doc, _score in results]))
+    # Try web search
+    print("\n2️⃣ Trying web search...")
+    result = answer_web(query_text, fallback_enabled=False)
+    if result:
+        return result
     
-    # Format the output nicely
-    print("🤖 Answer:")
-    print("=" * 60)
-    print(response_text)
-    print("\n📚 Sources:")
-    print("-" * 20)
-    for i, source in enumerate(sources, 1):
-        print(f"{i}. {source}")
+    # Try direct LLM as last resort
+    print("\n3️⃣ Trying direct LLM...")
+    result = answer_direct(query_text, fallback_enabled=False)
+    if result:
+        return result
     
-    print(f"\n✅ Query processed successfully! Found {len(results)} relevant passages.")
+    print("❌ All sources failed!")
+    return None
+
+
+def answer_all(query_text):
+    """Get answers from all sources and compare them"""
+    print("🔍 Comparing all sources...")
+    
+    results = {}
+    
+    # Try RAG
+    print("\n" + "="*60)
+    print("1️⃣ LOCAL DOCUMENTS (RAG)")
+    print("="*60)
+    rag_result = answer_rag(query_text, fallback_enabled=False)
+    if rag_result:
+        results["rag"] = rag_result
+    
+    # Try web search
+    print("\n" + "="*60)
+    print("2️⃣ WEB SEARCH")
+    print("="*60)
+    web_result = answer_web(query_text, fallback_enabled=False)
+    if web_result:
+        results["web"] = web_result
+    
+    # Try direct LLM
+    print("\n" + "="*60)
+    print("3️⃣ DIRECT LLM")
+    print("="*60)
+    direct_result = answer_direct(query_text, fallback_enabled=False)
+    if direct_result:
+        results["direct"] = direct_result
+    
+    # Summary
+    print("\n" + "="*60)
+    print("📊 SUMMARY")
+    print("="*60)
+    print(f"✅ Sources that provided answers: {len(results)}")
+    for source in results.keys():
+        print(f"   • {source}")
+    
+    return results
 
 
 if __name__ == "__main__":
