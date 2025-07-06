@@ -1,0 +1,12 @@
+{
+  "data/books/nvidia-bluefield-3-networking-platform-user-guide.pdf": {
+    "size": 15795425,
+    "modified": 1739264190.0,
+    "hash": "baf56524392b18942dec34fa208be30afb68ce1c8493ab3bdf66fc6c3e4e1860"
+  },
+  "data/books/test.txt": {
+    "size": 64,
+    "modified": 1751809511.2084615,
+    "hash": "0e1163056295cc8e5f8e541ed199991cbefd7d4a7ff3d6729e8269a9866c8613"
+  }
+}

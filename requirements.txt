@@ -7,8 +7,10 @@ unstructured>=0.10.30 # Document loading
 # onnxruntime==1.17.1 # chromadb dependency: on Mac use `conda install onnxruntime -c conda-forge`
 # For Windows users, install Microsoft Visual C++ Build Tools first
 # install onnxruntime before installing `chromadb`
-chromadb>=0.5.20 # Vector storage - updated version
+chromadb>=0.4.0,<0.6.0 # Vector storage - compatible version
 google-cloud-aiplatform>=1.38.0 # For Vertex AI on GCP
 pydantic>=2,<3 # Pydantic 2 compatibility for LangChain 0.3
+pypdf>=4.0.0 # For PDF document processing
+pytest>=7.0.0 # For testing framework
 
 # install markdown depenendies with: `pip install "unstructured[md]"` after install the requirements file. Leave this line commented out. 
