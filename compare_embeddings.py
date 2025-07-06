@@ -13,7 +13,7 @@ LOCATION = os.environ.get('GOOGLE_CLOUD_LOCATION', 'us-central1')  # Default loc
 def main():
     # Get embedding for a word using Vertex AI
     embedding_function = VertexAIEmbeddings(
-        model_name="textembedding-gecko@001",  # Vertex AI embedding model
+        model_name="text-embedding-005",  # Latest Vertex AI embedding model
         project=PROJECT_ID,
         location=LOCATION
     )

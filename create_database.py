@@ -60,7 +60,7 @@ def save_to_chroma(chunks: list[Document]):
 
     # Create a new DB from the documents using Vertex AI embeddings.
     embedding_function = VertexAIEmbeddings(
-        model_name="textembedding-gecko@001",  # Vertex AI embedding model
+        model_name="text-embedding-005",  # Latest Vertex AI embedding model
         project=PROJECT_ID,
         location=LOCATION
     )

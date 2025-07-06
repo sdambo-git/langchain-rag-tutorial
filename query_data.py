@@ -36,7 +36,7 @@ def main():
 
     # Prepare the DB with Vertex AI embeddings.
     embedding_function = VertexAIEmbeddings(
-        model_name="textembedding-gecko@001",  # Vertex AI embedding model
+        model_name="text-embedding-005",  # Latest Vertex AI embedding model
         project=PROJECT_ID,
         location=LOCATION
     )
