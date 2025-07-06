@@ -2,3 +2,5 @@
 chroma_*
 chroma
 .DS_Store
+**/google-cloud-sdk
+google-cloud-sdk/platform/bundledpythonunix/lib/
