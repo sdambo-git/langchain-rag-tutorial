@@ -7,3 +7,35 @@ google-cloud-sdk/platform/bundledpythonunix/lib/
 google-cloud-cli-linux-x86_64.tar.gz
 google-cloud-sdk/
 *.tar.gz
+# Google Cloud SDK files
+google-cloud-cli-linux-x86_64.tar.gz
+google-cloud-sdk/
+google-cloud-cli-*.tar.gz
+
+# Large archive files
+*.tar.gz
+*.zip
+*.tar.bz2
+*.tar.xz
+
+# Large binary files
+*.a
+*.so
+*.dylib
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+.env
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
