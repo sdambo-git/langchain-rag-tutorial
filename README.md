@@ -1,4 +1,4 @@
-# 🚀 LangChain RAG Tutorial - Enhanced Multi-Source System
+# 🚀 LangChain RAG System - Enhanced Multi-Source System
 
 A comprehensive **Retrieval-Augmented Generation (RAG) system** with intelligent multi-source querying, advanced file management, and professional-grade features.
 
