@@ -4,3 +4,6 @@ chroma
 .DS_Store
 **/google-cloud-sdk
 google-cloud-sdk/platform/bundledpythonunix/lib/
+google-cloud-cli-linux-x86_64.tar.gz
+google-cloud-sdk/
+*.tar.gz
