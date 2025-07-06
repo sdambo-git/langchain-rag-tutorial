@@ -6,8 +6,10 @@ import warnings
 import hashlib
 import json
 import io
+import fnmatch
 from pathlib import Path
 from contextlib import redirect_stderr
+from datetime import datetime
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
@@ -43,11 +45,100 @@ METADATA_FILE = "file_metadata.json"
 
 
 def main():
-    # Check if the database should be cleared (using the --reset flag).
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--reset", action="store_true", help="Reset the database.")
-    parser.add_argument("--force", action="store_true", help="Force reprocess all files.")
+    # Create argument parser with comprehensive help
+    parser = argparse.ArgumentParser(
+        description="🚀 RAG Database Creation and Management Tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+📚 EXAMPLES:
+  # Normal run - only processes changed/new files
+  python create_database.py
+  
+  # Reset everything (clears database and metadata)
+  python create_database.py --reset
+  
+  # Force reprocess all files (ignores change detection)  
+  python create_database.py --force
+  
+  # Remove specific files from database
+  python create_database.py --remove "*.txt"
+  python create_database.py --remove "old_document.pdf"
+  
+  # Show database status
+  python create_database.py --status
+  
+  # Get help
+  python create_database.py --help
+
+🔍 HOW IT WORKS:
+  The script intelligently detects file changes using:
+  • File size comparison
+  • Modification time tracking  
+  • Content hash verification (SHA-256)
+  
+  Only changed or new files are processed, making updates very fast!
+
+📁 SUPPORTED FILE TYPES:
+  • PDF files (*.pdf) - using PyPDFLoader
+  • Markdown files (*.md) - using DirectoryLoader
+  • Text files (*.txt) - using DirectoryLoader
+
+💾 FILES CREATED:
+  • chroma/ - Vector database directory
+  • file_metadata.json - File change tracking metadata
+        """
+    )
+    
+    parser.add_argument(
+        "--reset", 
+        action="store_true", 
+        help="🗑️  Reset the database completely. This will:\n"
+             "   • Delete the entire vector database (chroma/)\n"
+             "   • Remove file metadata (file_metadata.json)\n"
+             "   • Force reprocessing of all files on next run"
+    )
+    
+    parser.add_argument(
+        "--force", 
+        action="store_true", 
+        help="🔄 Force reprocess all files, ignoring change detection.\n"
+             "   • Removes existing chunks for all files\n"
+             "   • Reprocesses every file regardless of changes\n"
+             "   • Updates file metadata\n"
+             "   • Useful for testing or after changing chunk parameters"
+    )
+    
+    parser.add_argument(
+        "--status", 
+        action="store_true", 
+        help="📊 Show database status and file information.\n"
+             "   • Display current database size\n"
+             "   • Show tracked files and their metadata\n"
+             "   • Exit without processing files"
+    )
+    
+    parser.add_argument(
+        "--remove", 
+        type=str,
+        metavar="PATTERN",
+        help="🗑️  Remove files from database using glob pattern.\n"
+             "   • Use glob patterns like '*.txt' or 'specific_file.pdf'\n"
+             "   • Removes chunks from vector database\n"
+             "   • Updates file metadata tracking\n"
+             "   • Examples: --remove '*.txt' --remove 'old_*.pdf'"
+    )
+    
     args = parser.parse_args()
+    
+    # Handle status command
+    if args.status:
+        show_database_status()
+        return
+    
+    # Handle remove command
+    if args.remove:
+        remove_files_from_database(args.remove)
+        return
     
     if args.reset:
         print("✨ Clearing Database")
@@ -203,6 +294,149 @@ def update_file_metadata(metadata, file_info):
         'hash': file_info['hash']
     }
     return metadata
+
+
+def show_database_status():
+    """Display database status and file information"""
+    print("📊 RAG Database Status")
+    print("=" * 50)
+    
+    # Check if database exists
+    if os.path.exists(CHROMA_PATH):
+        try:
+            with redirect_stderr(io.StringIO()):
+                db = Chroma(persist_directory=CHROMA_PATH, embedding_function=get_embedding_function())
+                existing_items = db.get(include=[])
+                total_chunks = len(existing_items["ids"])
+            print(f"🗄️  Database: {CHROMA_PATH}")
+            print(f"📄 Total chunks: {total_chunks}")
+        except Exception as e:
+            print(f"❌ Error reading database: {e}")
+    else:
+        print("❌ Database not found. Run without --status to create it.")
+    
+    # Show file metadata
+    print(f"\n📁 File Tracking: {METADATA_FILE}")
+    stored_metadata = load_file_metadata()
+    
+    if stored_metadata:
+        print(f"📊 Tracked files: {len(stored_metadata)}")
+        print("\nFile Details:")
+        print("-" * 50)
+        
+        for file_path, metadata in stored_metadata.items():
+            file_size_mb = metadata['size'] / (1024 * 1024)
+            modified_time = datetime.fromtimestamp(metadata['modified']).strftime('%Y-%m-%d %H:%M:%S')
+            
+            print(f"📄 {file_path}")
+            print(f"   Size: {file_size_mb:.2f} MB")
+            print(f"   Modified: {modified_time}")
+            print(f"   Hash: {metadata['hash'][:16]}...")
+            print()
+    else:
+        print("📝 No files tracked yet. Run without --status to process files.")
+    
+    # Show current files in directory
+    print(f"\n📂 Files in {DATA_PATH}:")
+    current_files = get_all_files()
+    if current_files:
+        for file_info in current_files:
+            file_size_mb = file_info['size'] / (1024 * 1024)
+            stored_info = stored_metadata.get(file_info['path'])
+            
+            if stored_info:
+                if has_file_changed(file_info, stored_info):
+                    status = "🔄 CHANGED"
+                else:
+                    status = "✅ UP TO DATE"
+            else:
+                status = "✨ NEW"
+            
+            print(f"   {status} {file_info['path']} ({file_size_mb:.2f} MB)")
+    else:
+        print("   No supported files found.")
+    
+    print(f"\n🔍 Supported file types: *.pdf, *.md, *.txt")
+    print(f"📖 Use --help for more information")
+    
+    return
+
+
+def remove_files_from_database(pattern):
+    """Remove files matching the glob pattern from the database"""
+    print(f"🔍 Searching for files matching pattern: '{pattern}'")
+    
+    # Load metadata to see what files are tracked
+    stored_metadata = load_file_metadata()
+    
+    if not stored_metadata:
+        print("❌ No files are tracked in the database.")
+        return
+    
+    # Find files matching the pattern
+    matching_files = []
+    
+    for file_path in stored_metadata.keys():
+        # Check if the file matches the pattern
+        if fnmatch.fnmatch(file_path, pattern) or fnmatch.fnmatch(os.path.basename(file_path), pattern):
+            matching_files.append(file_path)
+    
+    if not matching_files:
+        print(f"❌ No files found matching pattern: '{pattern}'")
+        print("📋 Available files:")
+        for file_path in stored_metadata.keys():
+            print(f"   • {file_path}")
+        return
+    
+    # Show what will be removed
+    print(f"\n🗑️  Files to remove ({len(matching_files)}):")
+    for file_path in matching_files:
+        print(f"   • {file_path}")
+    
+    # Confirm removal
+    try:
+        confirm = input(f"\n❓ Remove {len(matching_files)} file(s) from database? (y/N): ").strip().lower()
+        if confirm not in ['y', 'yes']:
+            print("❌ Operation cancelled.")
+            return
+    except KeyboardInterrupt:
+        print("\n❌ Operation cancelled.")
+        return
+    
+    # Remove files from database
+    removed_count = 0
+    total_chunks_removed = 0
+    
+    try:
+        with redirect_stderr(io.StringIO()):
+            db = Chroma(persist_directory=CHROMA_PATH, embedding_function=get_embedding_function())
+            
+            for file_path in matching_files:
+                chunks_removed = remove_chunks_for_file(db, file_path)
+                if chunks_removed > 0:
+                    removed_count += 1
+                    total_chunks_removed += chunks_removed
+                    
+                    # Remove from metadata
+                    if file_path in stored_metadata:
+                        del stored_metadata[file_path]
+                        print(f"✅ Removed {file_path} ({chunks_removed} chunks)")
+                else:
+                    print(f"⚠️  No chunks found for {file_path}")
+    
+    except Exception as e:
+        print(f"❌ Error removing files: {e}")
+        return
+    
+    # Save updated metadata
+    save_file_metadata(stored_metadata)
+    
+    print(f"\n🎉 Removal complete!")
+    print(f"   • Files removed: {removed_count}")
+    print(f"   • Chunks removed: {total_chunks_removed}")
+    print(f"   • Metadata updated: {METADATA_FILE}")
+    
+    return
 
 
 def load_documents():
