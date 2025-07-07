@@ -4,47 +4,46 @@ Your RAG system now supports **multiple answer sources** with intelligent fallba
 
 ## 📊 Available Sources
 
-### 1. 🔍 **RAG (Local Documents)** - *Default*
+### 1. 🤖 **Smart Mode** - *DEFAULT & Recommended*
+- AI tests multiple sources and picks the best answer automatically
+- Uses intelligent scoring to select optimal response
+- Always includes Direct LLM + recommended source based on query analysis
+- **Best for**: Daily use - always gives optimal results
+
+### 2. 🔍 **RAG (Local Documents)** - *Force Local Only*
 - Searches your local ChromaDB vector database
 - Provides answers based on your uploaded documents
 - Most accurate for document-specific questions
-- **Best for**: Technical documentation, specific manuals, proprietary information
+- **Best for**: When you know the info is in your local files
 
-### 2. 🌐 **Web Search** - *Current Information*
-- Uses LLM with web-style prompting for current/general knowledge
-- Provides comprehensive, up-to-date information
-- **Best for**: Current events, general knowledge, latest technology trends
+### 3. 🌐 **Web Search** - *Force Web Only*
+- Real web search using Google Custom Search API
+- Provides current, real-time information from the internet
+- **Best for**: Breaking news, current events, latest developments
 
-### 3. 🧠 **Direct LLM** - *Training Knowledge*
-- Direct query to the language model without context
+### 4. 🧠 **Direct LLM** - *Force LLM Only*
+- Direct query to the language model without external context
 - Uses LLM's training data knowledge
-- **Best for**: General concepts, explanations, broad topics
+- **Best for**: General concepts, explanations, theory
 
-### 4. 🔄 **Auto Mode** - *Smart Fallback*
-- Tries sources in order: RAG → Web → Direct
-- Automatically finds the best available answer
-- **Best for**: When you're unsure which source to use
-
-### 5. 🔀 **All Sources** - *Comparison Mode*
-- Gets answers from all available sources
-- Shows different perspectives on the same question
-- **Best for**: Comparing local vs. general knowledge
+### 5. 🔀 **All Sources** - *Research Mode*
+- Gets answers from all available sources (RAG, Web, Direct)
+- Shows different perspectives side-by-side for comparison
+- **Best for**: Research when you want to compare different viewpoints
 
 ## 🛠️ Usage Examples
 
 ### Basic Usage
 ```bash
-# Default RAG search
+# Default Smart mode (AI picks best source automatically)
 python query_data.py "What is BlueField-3?"
 
-# Specific source
-python query_data.py "What is BlueField-3?" --source direct
+# Force specific source
+python query_data.py "What is BlueField-3?" --source rag
 python query_data.py "What is BlueField-3?" --source web
+python query_data.py "What is BlueField-3?" --source direct
 
-# Auto fallback mode
-python query_data.py "What is quantum computing?" --source auto
-
-# Compare all sources
+# Compare all sources side-by-side
 python query_data.py "What is BlueField-3?" --source all
 ```
 
@@ -61,95 +60,101 @@ python query_data.py --help
 
 | Query Type | Recommended Source | Why |
 |------------|-------------------|-----|
-| Document-specific questions | `rag` | Most accurate, document-based |
-| Current events, trends | `web` | Up-to-date information |
-| General concepts | `direct` | Broad knowledge base |
-| Unknown/mixed topics | `auto` | Smart fallback system |
-| Need comparison | `all` | See all perspectives |
+| **Daily queries** | `smart` (default) | **AI picks optimal source automatically** |
+| Document-specific questions | `rag` | Force local docs when you know info is there |
+| Breaking news, current events | `web` | Force web search for real-time information |
+| General concepts, theory | `direct` | Force LLM knowledge for explanations |
+| Research, comparison | `all` | See all perspectives side-by-side |
 
 ## 🔧 Technical Features
 
-### Smart Fallback System
-- **Automatic**: Tries multiple sources until one succeeds
-- **Quality Checking**: Evaluates answer relevance before fallback
-- **Error Handling**: Graceful failure with helpful suggestions
+### Smart Intelligence System
+- **AI Analysis**: Analyzes your query to recommend best source
+- **Multi-Source Testing**: Tests multiple sources simultaneously
+- **Objective Scoring**: Rates responses 0-10 for quality and relevance
+- **Automatic Selection**: Picks highest-scoring answer
 
 ### Source Identification
 - Clear labeling of which source provided the answer
-- Source attribution for RAG queries
-- Confidence indicators where applicable
+- Source attribution and URLs for web/RAG queries
+- Scoring explanations for transparency
 
 ### Performance Optimization
 - Suppressed telemetry for clean output
 - Efficient database queries
-- Minimal latency for direct LLM calls
+- Parallel source testing for speed
 
 ## 📋 Example Scenarios
 
-### Scenario 1: Technical Documentation Query
+### Scenario 1: Smart Mode (Daily Use)
 ```bash
-# Query about specific BlueField-3 feature
+# Let AI pick the best source automatically
+python query_data.py "What is NVIDIA DOCA and how to use it?"
+# → AI tests multiple sources, picks web for comprehensive explanation
+```
+
+### Scenario 2: Technical Documentation Query
+```bash
+# Force local documents when you know info is there
 python query_data.py "How does BlueField-3 handle DMA transfers?" --source rag
 # → Returns specific technical details from your documentation
 ```
 
-### Scenario 2: Current Technology Trends
+### Scenario 3: Current Technology Trends
 ```bash
-# Query about latest developments
-python query_data.py "What are the latest AI developments?" --source web
-# → Returns current, comprehensive information
+# Force web search for breaking news
+python query_data.py "What are the latest AI developments in 2024?" --source web
+# → Returns current, real-time information from web
 ```
 
-### Scenario 3: Comparison Research
+### Scenario 4: Research and Comparison
 ```bash
-# Compare different knowledge sources
+# Compare all sources side-by-side
 python query_data.py "What is DOCA framework?" --source all
-# → Shows document-specific vs. general knowledge differences
-```
-
-### Scenario 4: Smart Discovery
-```bash
-# Let the system find the best source
-python query_data.py "BlueField-3 vs other DPUs" --source auto
-# → Tries RAG first, falls back to web/direct as needed
+# → Shows local docs vs. web vs. LLM knowledge differences
 ```
 
 ## 🚨 Important Notes
 
 ### Web Search Implementation
-- Currently simulated using enhanced LLM prompting
-- Provides web-style comprehensive answers
-- Can be extended with actual web search APIs
+- Real Google Custom Search API integration
+- Extracts content from actual web pages
+- Provides current, real-time information
+- Requires API configuration (see GOOGLE_SEARCH_SETUP.md)
 
-### Fallback Behavior
-- Only triggered when primary source fails or finds no good results
-- Preserves source hierarchy (RAG → Web → Direct)
-- Can be disabled by omitting `--fallback` flag
+### Smart Mode Intelligence
+- Always tests Direct LLM as baseline
+- Tests AI-recommended source based on query analysis
+- May test additional sources if scores are low
+- Uses objective 0-10 scoring system
 
-### Source Quality
-- **RAG**: Highest accuracy for document content
-- **Web**: Best for current/general information
-- **Direct**: Good for concepts and explanations
+### Source Quality & Use Cases
+- **Smart**: Best overall results - use for daily queries
+- **RAG**: Highest accuracy for your specific documents
+- **Web**: Best for current events and real-time information
+- **Direct**: Good for general concepts and explanations
+- **All**: Best for research when you need multiple perspectives
 
 ## 🎉 Benefits
 
-1. **Flexibility**: Choose the best source for your query type
-2. **Reliability**: Automatic fallback ensures you get an answer
-3. **Comparison**: See different perspectives on the same topic
-4. **Efficiency**: Smart routing to the most appropriate source
-5. **Transparency**: Clear indication of which source provided the answer
+1. **Intelligence**: AI automatically picks the best source for your query
+2. **Flexibility**: Choose specific sources when needed
+3. **Reliability**: Smart testing ensures high-quality answers
+4. **Comparison**: See different perspectives on the same topic
+5. **Efficiency**: Optimal source selection and parallel processing
+6. **Transparency**: Clear scoring and source attribution
 
 ---
 
 ## Quick Reference
 
 ```bash
-# Source Options
---source rag      # Local documents (default)
---source web      # Web-style search
---source direct   # Direct LLM
---source auto     # Smart fallback
---source all      # Compare all
+# Source Options (5 total)
+--source smart    # AI picks best source automatically (DEFAULT)
+--source rag      # Force local documents only
+--source web      # Force web search only
+--source direct   # Force LLM knowledge only
+--source all      # Compare all sources side-by-side
 
 # Additional Options
 --fallback        # Enable fallback for single source
