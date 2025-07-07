@@ -12,5 +12,8 @@ google-cloud-aiplatform>=1.38.0 # For Vertex AI on GCP
 pydantic>=2,<3 # Pydantic 2 compatibility for LangChain 0.3
 pypdf>=4.0.0 # For PDF document processing
 pytest>=7.0.0 # For testing framework
+google-api-python-client>=2.0.0 # For Google Custom Search API
+requests>=2.31.0 # For web scraping and HTTP requests
+beautifulsoup4>=4.12.0 # For parsing HTML content
 
 # install markdown depenendies with: `pip install "unstructured[md]"` after install the requirements file. Leave this line commented out. 

@@ -179,6 +179,13 @@ GOOGLE_CLOUD_LOCATION=us-central1
 
 # Google AI Studio (for chat model)
 GOOGLE_API_KEY=your-google-ai-studio-key
+
+# Google Search API
+GOOGLE_SEARCH_API_KEY=your-api-key
+GOOGLE_SEARCH_ENGINE_ID=your-search-engine-id
+WEB_SEARCH_ENABLED=true
+WEB_SEARCH_MAX_RESULTS=5
+WEB_SEARCH_TIMEOUT=10
 ```
 
 ### **3. Authenticate with Google Cloud**
