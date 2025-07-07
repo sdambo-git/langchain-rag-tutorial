@@ -270,16 +270,34 @@ def analyze_query_intent(query_text):
     if len(query_lower.split()) > 10:
         rag_score += 1
     
-    # Current events and version queries favor web search
+    # Handle explanatory questions more intelligently
     if query_lower.startswith(('what is', 'define', 'explain')):
         if any(keyword in query_lower for keyword in ['latest', 'current', 'recent', 'new']):
             web_score += 2
         else:
-            # For domain-specific "what is" questions, prefer RAG if technical terms present
-            if any(term in query_lower for term in ['nvidia', 'openshift', 'gpu', 'operator', 'kubernetes']):
-                rag_score += 1
+            # For "what is" questions, prefer comprehensive sources
+            # Technical terms get both web and direct boost, let other factors decide
+            if any(term in query_lower for term in ['nvidia', 'openshift', 'gpu', 'operator', 'kubernetes', 'doca', 'cuda']):
+                web_score += 1  # Web often has comprehensive explanations
+                direct_score += 1  # LLM also good for explanations
+                # Don't boost RAG here unless it's a very specific technical implementation query
             else:
-                direct_score += 1
+                direct_score += 2  # Pure conceptual questions favor direct LLM
+    
+    # "How to" questions strongly favor RAG for technical implementation
+    if any(phrase in query_lower for phrase in ['how to', 'how do i', 'how can i']):
+        if any(term in query_lower for term in ['nvidia', 'openshift', 'gpu', 'operator', 'kubernetes', 'doca', 'cuda']):
+            rag_score += 2  # Technical how-to should check docs first
+        else:
+            web_score += 1  # General how-to might need current info
+    
+    # Special handling for combined "what is X and how to use it" queries
+    if ('what is' in query_lower and any(phrase in query_lower for phrase in ['how to', 'how do i', 'use it', 'using'])):
+        # These need comprehensive information, prefer web for technical terms
+        if any(term in query_lower for term in ['nvidia', 'openshift', 'gpu', 'operator', 'kubernetes', 'doca', 'cuda']):
+            web_score += 2  # Web likely has comprehensive guides
+            # Reduce RAG bonus since local docs might not have complete info
+            rag_score = max(0, rag_score - 1)
     
     # Determine the best source
     if web_score > rag_score and web_score > direct_score:
@@ -342,7 +360,7 @@ def interactive_mode():
                 print(f"💡 Reasoning: {reasoning}")
                 print(f"⏳ Processing with {recommended_source} source...\n")
                 
-                # Route to the recommended source
+                # Route to the recommended source with intelligent fallback
                 if recommended_source == "rag":
                     answer_rag(query, fallback_enabled=True)
                 elif recommended_source == "web":
@@ -447,13 +465,13 @@ def main():
         print(f"💡 Reasoning: {reasoning}")
         print(f"⏳ Processing with {recommended_source} source...\n")
         
-        # Route to the recommended source
+        # Route to the recommended source with intelligent fallback
         if recommended_source == "rag":
-            answer_rag(query_text, args.fallback)
+            answer_rag(query_text, True)  # Always enable fallback for smart mode
         elif recommended_source == "web":
-            answer_web(query_text, args.fallback)
+            answer_web(query_text, True)  # Always enable fallback for smart mode
         elif recommended_source == "direct":
-            answer_direct(query_text, args.fallback)
+            answer_direct(query_text, True)  # Always enable fallback for smart mode
     else:
         print("⏳ Processing...\n")
         
@@ -492,7 +510,13 @@ def answer_rag(query_text, fallback_enabled=False):
         
         # Check if we found good results
         if len(results) == 0 or results[0][1] < 0.3:
-            if fallback_enabled:
+            # For "what is" questions about technical terms, automatically try web search
+            if any(phrase in query_text.lower() for phrase in ['what is', 'define', 'explain']) and \
+               any(term in query_text.lower() for term in ['nvidia', 'openshift', 'gpu', 'operator', 'kubernetes', 'doca', 'cuda']):
+                print("❌ No good results in local documents for this explanatory query.")
+                print("🔄 Automatically trying web search for comprehensive information...")
+                return answer_web(query_text, fallback_enabled=False)
+            elif fallback_enabled:
                 print("❌ No good results in local documents. Trying web search...")
                 return answer_web(query_text, fallback_enabled=False)
             else:
@@ -507,6 +531,32 @@ def answer_rag(query_text, fallback_enabled=False):
         
         model = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
         response = model.invoke(prompt)
+        
+        # Check if the response indicates insufficient information
+        response_text = str(response.content) if response.content else ""
+        response_lower = response_text.lower()
+        insufficient_indicators = [
+            "doesn't explain", "doesn't contain", "does not contain", "not included", "doesn't have", "does not have",
+            "doesn't provide", "does not provide", "not available", "insufficient information",
+            "more details", "not detailed", "doesn't describe", "does not describe", "lacks information",
+            "no information", "not found", "not present", "doesn't cover", "does not cover"
+        ]
+        
+        has_insufficient_info = any(indicator in response_lower for indicator in insufficient_indicators)
+        
+        # For explanatory or troubleshooting questions about technical terms, try web search if local docs are insufficient
+        is_explanatory = any(phrase in query_text.lower() for phrase in ['what is', 'define', 'explain'])
+        is_troubleshooting = any(phrase in query_text.lower() for phrase in ['troubleshoot', 'error', 'issue', 'problem', 'fix', 'debug', 'not working', 'fails', 'failed'])
+        has_technical_terms = any(term in query_text.lower() for term in ['nvidia', 'openshift', 'gpu', 'operator', 'kubernetes', 'doca', 'cuda'])
+        
+        if has_insufficient_info and (is_explanatory or is_troubleshooting) and has_technical_terms:
+            print("🤖 Initial Answer (from local documents):")
+            print("=" * 60)
+            print(response.content)
+            print("\n⚠️ Local documents don't have comprehensive information.")
+            print("🔄 Automatically searching the web for better coverage...")
+            web_result = answer_web(query_text, fallback_enabled=False)
+            return web_result
         
         # Get unique sources
         sources = list(set([doc.metadata.get("source", "Unknown") for doc, _score in results]))
