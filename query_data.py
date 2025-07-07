@@ -110,7 +110,7 @@ def google_search(query, max_results=5):
         return []
 
 
-def extract_web_content(url, timeout=10):
+def extract_web_content(url, timeout=10, verbose=True):
     """Extract content from a web page"""
     try:
         headers = {
@@ -141,13 +141,15 @@ def extract_web_content(url, timeout=10):
         return text
         
     except Exception as e:
-        print(f"⚠️  Could not extract content from {url}: {e}")
+        if verbose:
+            print(f"⚠️  Could not extract content from {url}: {e}")
         return ""
 
 
-def perform_web_search(query, max_results=5):
+def perform_web_search(query, max_results=5, verbose=True):
     """Perform web search and extract content from results"""
-    print(f"🔍 Searching for: {query}")
+    if verbose:
+        print(f"🔍 Searching for: {query}")
     
     # Get search results
     search_results = google_search(query, max_results)
@@ -155,14 +157,16 @@ def perform_web_search(query, max_results=5):
     if not search_results:
         return None, []
     
-    print(f"📋 Found {len(search_results)} search results")
+    if verbose:
+        print(f"📋 Found {len(search_results)} search results")
     
     # Extract content from each result
     web_content = []
     for i, result in enumerate(search_results, 1):
-        print(f"📄 Processing result {i}/{len(search_results)}: {result['displayLink']}")
+        if verbose:
+            print(f"📄 Processing result {i}/{len(search_results)}: {result['displayLink']}")
         
-        content = extract_web_content(result['link'], WEB_SEARCH_TIMEOUT)
+        content = extract_web_content(result['link'], WEB_SEARCH_TIMEOUT, verbose)
         if content:
             web_content.append({
                 'title': result['title'],
@@ -189,6 +193,222 @@ def perform_web_search(query, max_results=5):
     context = "\n---\n\n".join(context_parts)
     
     return context, web_content
+
+
+def evaluate_response_quality(query_text, response_text, source_type):
+    """Evaluate the quality and relevance of a response to a query"""
+    if not response_text or len(response_text.strip()) < 50:
+        return 0  # Very short or empty responses get low score
+    
+    response_lower = response_text.lower()
+    query_lower = query_text.lower()
+    
+    score = 5  # Base score
+    
+    # Check for insufficient information indicators
+    insufficient_indicators = [
+        "doesn't explain", "doesn't contain", "does not contain", "not included", "doesn't have", "does not have",
+        "doesn't provide", "does not provide", "not available", "insufficient information",
+        "more details", "not detailed", "doesn't describe", "does not describe", "lacks information",
+        "no information", "not found", "not present", "doesn't cover", "does not cover",
+        "i don't know", "i cannot", "i can't", "unable to", "cannot provide"
+    ]
+    
+    # Penalty for insufficient information
+    if any(indicator in response_lower for indicator in insufficient_indicators):
+        score -= 3
+    
+    # Bonus for comprehensive responses
+    if len(response_text) > 500:
+        score += 1
+    if len(response_text) > 1000:
+        score += 1
+    
+    # Check if response directly answers the query
+    query_words = set(query_lower.split())
+    response_words = set(response_lower.split())
+    overlap = len(query_words.intersection(response_words))
+    if overlap >= len(query_words) * 0.5:  # 50% word overlap
+        score += 1
+    
+    # Bonus for structured responses (lists, steps, etc.)
+    if any(pattern in response_text for pattern in ['\n1.', '\n2.', '\n*', '\n-', '**', '###']):
+        score += 1
+    
+    # Source-specific bonuses
+    if source_type == "web" and "sources:" in response_lower:
+        score += 1  # Web responses with sources are valuable
+    elif source_type == "rag" and not any(indicator in response_lower for indicator in insufficient_indicators):
+        score += 1  # Good RAG responses are valuable for technical queries
+    elif source_type == "direct" and len(response_text) > 800:
+        score += 1  # Comprehensive direct LLM responses
+    
+    return max(0, min(10, score))  # Clamp between 0-10
+
+
+def smart_answer(query_text):
+    """Run multiple sources and return the best response"""
+    print("🧠 Smart Mode: Testing multiple sources to find the optimal answer...")
+    
+    # Get recommended source from smart analysis
+    recommended_source, reasoning = analyze_query_intent(query_text)
+    print(f"🎯 Primary recommendation: {recommended_source}")
+    print(f"💡 Reasoning: {reasoning}")
+    
+    responses = {}
+    
+    # Always test direct LLM (fast and always available)
+    print("\n🧠 Testing Direct LLM...")
+    try:
+        direct_response = get_direct_response(query_text)
+        if direct_response:
+            direct_score = evaluate_response_quality(query_text, direct_response, "direct")
+            responses["direct"] = {
+                "response": direct_response,
+                "score": direct_score,
+                "reasoning": f"Direct LLM knowledge (score: {direct_score}/10)"
+            }
+            print(f"✅ Direct LLM completed (score: {direct_score}/10)")
+        else:
+            print("❌ Direct LLM failed")
+    except Exception as e:
+        print(f"❌ Direct LLM error: {e}")
+    
+    # Test the recommended source
+    print(f"\n🎯 Testing Recommended Source ({recommended_source})...")
+    try:
+        if recommended_source == "rag":
+            rag_response = get_rag_response(query_text)
+            if rag_response:
+                rag_score = evaluate_response_quality(query_text, rag_response, "rag")
+                responses["rag"] = {
+                    "response": rag_response,
+                    "score": rag_score,
+                    "reasoning": f"Local documents (score: {rag_score}/10)"
+                }
+                print(f"✅ RAG completed (score: {rag_score}/10)")
+            else:
+                print("❌ RAG failed or no results")
+        
+        elif recommended_source == "web":
+            web_response = get_web_response(query_text)
+            if web_response:
+                web_score = evaluate_response_quality(query_text, web_response, "web")
+                responses["web"] = {
+                    "response": web_response,
+                    "score": web_score,
+                    "reasoning": f"Web search (score: {web_score}/10)"
+                }
+                print(f"✅ Web search completed (score: {web_score}/10)")
+            else:
+                print("❌ Web search failed")
+        
+        # If recommended was direct, we already have it
+        
+    except Exception as e:
+        print(f"❌ Recommended source ({recommended_source}) error: {e}")
+    
+    # If we don't have web results yet and other sources scored low, try web search
+    if "web" not in responses and all(r["score"] < 6 for r in responses.values()):
+        print("\n🌐 Scores are low, trying web search for additional information...")
+        try:
+            web_response = get_web_response(query_text)
+            if web_response:
+                web_score = evaluate_response_quality(query_text, web_response, "web")
+                responses["web"] = {
+                    "response": web_response,
+                    "score": web_score,
+                    "reasoning": f"Web search fallback (score: {web_score}/10)"
+                }
+                print(f"✅ Web search completed (score: {web_score}/10)")
+        except Exception as e:
+            print(f"❌ Web search error: {e}")
+    
+    if not responses:
+        print("❌ All sources failed!")
+        return None
+    
+    # Find the best response
+    best_source = max(responses.keys(), key=lambda k: responses[k]["score"])
+    best_response = responses[best_source]
+    
+    print(f"\n🏆 Best Response Selected: {best_source.upper()}")
+    print(f"📊 Final Scores:")
+    for source, data in sorted(responses.items(), key=lambda x: x[1]["score"], reverse=True):
+        indicator = "🏆" if source == best_source else "📊"
+        print(f"   {indicator} {source}: {data['score']}/10 - {data['reasoning']}")
+    
+    # Display the best response
+    print(f"\n🤖 Best Answer (from {best_source}):")
+    print("=" * 60)
+    print(best_response["response"])
+    
+    if len(responses) > 1:
+        print(f"\n💡 Note: Tested {len(responses)} sources and selected the highest-scoring response.")
+    
+    return best_response["response"]
+
+
+def get_direct_response(query_text):
+    """Get response from direct LLM"""
+    try:
+        model = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
+        response = model.invoke(query_text)
+        return str(response.content) if response.content else None
+    except Exception:
+        return None
+
+
+def get_rag_response(query_text):
+    """Get response from RAG without printing output"""
+    try:
+        PROJECT_ID = os.environ.get('GOOGLE_CLOUD_PROJECT_ID')
+        LOCATION = os.environ.get('GOOGLE_CLOUD_LOCATION', 'us-central1')
+        
+        embedding_function = VertexAIEmbeddings(
+            model_name="text-embedding-005",
+            project=PROJECT_ID,
+            location=LOCATION
+        )
+        
+        with redirect_stderr(io.StringIO()):
+            db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_function)
+            results = db.similarity_search_with_relevance_scores(query_text, k=3)
+        
+        if len(results) == 0 or results[0][1] < 0.3:
+            return None
+        
+        context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
+        prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
+        prompt = prompt_template.format(context=context_text, question=query_text)
+        
+        model = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
+        response = model.invoke(prompt)
+        
+        return str(response.content) if response.content else None
+    except Exception:
+        return None
+
+
+def get_web_response(query_text):
+    """Get response from web search without printing output"""
+    try:
+        if not WEB_SEARCH_ENABLED or not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_ENGINE_ID:
+            return None
+        
+        context, web_content = perform_web_search(query_text, WEB_SEARCH_MAX_RESULTS, verbose=False)
+        if not context:
+            return None
+        
+        prompt_template = ChatPromptTemplate.from_template(WEB_SEARCH_PROMPT_TEMPLATE)
+        prompt = prompt_template.format(context=context, question=query_text)
+        
+        model = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
+        response = model.invoke(prompt)
+        
+        return str(response.content) if response.content else None
+    except Exception:
+        return None
 
 
 def analyze_query_intent(query_text):
@@ -329,13 +549,22 @@ def interactive_mode():
             
             if query.lower() == 'help':
                 print("\n📚 Available commands:")
-                print("  • Just type your question for smart source selection")
-                print("  • Add :rag, :web, :direct, :auto, or :all to force a source")
-                print("  • Examples:")
-                print("    'What is AI?' → Smart selection")
+                print("  • Just type your question for smart source selection (recommended)")
+                print("  • Add :rag, :web, :direct, or :all to force a specific source")
+                print()
+                print("🎯 When to use each mode:")
+                print("  • Default (smart): Best answer automatically - DEFAULT mode for daily queries")
+                print("  • :web → Force web search for current events/breaking news")
+                print("  • :direct → Force LLM knowledge for general concepts/theory")
+                print("  • :rag → Force local docs when you know info is in your files")
+                print("  • :all → Research mode to compare all sources side-by-side")
+                print()
+                print("📋 Examples:")
+                print("    'What is AI?' → Smart picks best source")
                 print("    'latest news:web' → Force web search")
-                print("    'explain physics:direct' → Force direct LLM")
-                print("    'quantum computing:all' → Compare all sources")
+                print("    'explain physics:direct' → Force LLM knowledge")
+                print("    'GPU troubleshooting:rag' → Force local docs")
+                print("    'machine learning:all' → Compare all sources")
                 print()
                 continue
             
@@ -346,7 +575,7 @@ def interactive_mode():
             source = "smart"
             if ':' in query:
                 query, source_spec = query.rsplit(':', 1)
-                if source_spec.lower() in ['rag', 'web', 'direct', 'smart', 'auto', 'all']:
+                if source_spec.lower() in ['rag', 'web', 'direct', 'smart', 'all']:
                     source = source_spec.lower()
                     query = query.strip()
             
@@ -355,18 +584,7 @@ def interactive_mode():
             
             # Handle smart source selection
             if source == "smart":
-                recommended_source, reasoning = analyze_query_intent(query)
-                print(f"🧠 AI Analysis: Recommending '{recommended_source}' source")
-                print(f"💡 Reasoning: {reasoning}")
-                print(f"⏳ Processing with {recommended_source} source...\n")
-                
-                # Route to the recommended source with intelligent fallback
-                if recommended_source == "rag":
-                    answer_rag(query, fallback_enabled=True)
-                elif recommended_source == "web":
-                    answer_web(query, fallback_enabled=True)
-                elif recommended_source == "direct":
-                    answer_direct(query, fallback_enabled=True)
+                smart_answer(query)
             else:
                 print("⏳ Processing...\n")
                 
@@ -377,8 +595,6 @@ def interactive_mode():
                     answer_web(query, fallback_enabled=True)
                 elif source == "direct":
                     answer_direct(query, fallback_enabled=True)
-                elif source == "auto":
-                    answer_auto(query)
                 elif source == "all":
                     answer_all(query)
             
@@ -407,31 +623,34 @@ def main():
   • rag: Search local documents using ChromaDB
   • web: Search the web for real-time information
   • direct: Ask LLM directly without context
-  • smart (default): AI chooses the best source automatically
-  • auto: Try sources in order until satisfied (rag → web → direct)
+  • smart (DEFAULT): AI tests multiple sources and picks the best response
   • all: Get answers from all sources and compare
+
+🎯 WHEN TO USE EACH MODE:
+  • smart: Daily use - want the best answer quickly (DEFAULT & recommended)
+  • rag: Force local docs only (when you know info is in your files)
+  • web: Force web search only (for latest news/current events)
+  • direct: Force LLM knowledge only (for general concepts/theory)
+  • all: Research mode - compare different perspectives side-by-side
 
 📋 EXAMPLES:
   # Interactive mode (no arguments)
   python query_data.py
   
-  # Smart source selection (AI chooses best source)
+  # Smart mode: Best answer automatically (RECOMMENDED)
   python query_data.py "What is BlueField-3?"
   
-  # Use default query
-  python query_data.py --source smart
-  
-  # Web search for current info
+  # Web search: Current/breaking information
   python query_data.py "latest AI news 2024" --source web
   
-  # Direct LLM answer
+  # Direct LLM: General concepts and explanations
   python query_data.py "explain quantum physics" --source direct
   
-  # Try multiple sources automatically
-  python query_data.py "machine learning trends" --source auto
+  # All sources: Research and comparison
+  python query_data.py "cryptocurrency pros and cons" --source all
   
-  # Compare all sources
-  python query_data.py "cryptocurrency news" --source all
+  # RAG: Technical documentation (when you know it's in your docs)
+  python query_data.py "OpenShift operator troubleshooting" --source rag
         """
     )
     parser.add_argument(
@@ -443,9 +662,9 @@ def main():
     )
     parser.add_argument(
         "--source", 
-        choices=["rag", "web", "direct", "smart", "auto", "all"],
+        choices=["rag", "web", "direct", "smart", "all"],
         default="smart",
-        help="Choose answer source: rag (local docs), web (search), direct (LLM), smart (AI chooses), auto (try multiple), all (compare all)"
+        help="Choose answer source: rag (local docs), web (search), direct (LLM), smart (DEFAULT - AI tests multiple sources, picks best), all (compare all)"
     )
     parser.add_argument(
         "--fallback",
@@ -460,18 +679,7 @@ def main():
     
     # Handle smart source selection
     if args.source == "smart":
-        recommended_source, reasoning = analyze_query_intent(query_text)
-        print(f"🧠 AI Analysis: Recommending '{recommended_source}' source")
-        print(f"💡 Reasoning: {reasoning}")
-        print(f"⏳ Processing with {recommended_source} source...\n")
-        
-        # Route to the recommended source with intelligent fallback
-        if recommended_source == "rag":
-            answer_rag(query_text, True)  # Always enable fallback for smart mode
-        elif recommended_source == "web":
-            answer_web(query_text, True)  # Always enable fallback for smart mode
-        elif recommended_source == "direct":
-            answer_direct(query_text, True)  # Always enable fallback for smart mode
+        smart_answer(query_text)
     else:
         print("⏳ Processing...\n")
         
@@ -482,8 +690,6 @@ def main():
             answer_web(query_text, args.fallback)
         elif args.source == "direct":
             answer_direct(query_text, args.fallback)
-        elif args.source == "auto":
-            answer_auto(query_text)
         elif args.source == "all":
             answer_all(query_text)
 
@@ -670,31 +876,6 @@ def answer_direct(query_text, fallback_enabled=False):
         print(f"❌ Direct LLM failed: {e}")
         return None
 
-
-def answer_auto(query_text):
-    """Try sources automatically in order: RAG → Web → Direct"""
-    print("🔄 Auto mode: Trying multiple sources...")
-    
-    # Try RAG first
-    print("\n1️⃣ Trying local documents (RAG)...")
-    result = answer_rag(query_text, fallback_enabled=False)
-    if result:
-        return result
-    
-    # Try web search
-    print("\n2️⃣ Trying web search...")
-    result = answer_web(query_text, fallback_enabled=False)
-    if result:
-        return result
-    
-    # Try direct LLM as last resort
-    print("\n3️⃣ Trying direct LLM...")
-    result = answer_direct(query_text, fallback_enabled=False)
-    if result:
-        return result
-    
-    print("❌ All sources failed!")
-    return None
 
 
 def answer_all(query_text):

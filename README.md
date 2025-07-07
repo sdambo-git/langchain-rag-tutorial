@@ -33,30 +33,40 @@ langchain-rag-tutorial/
 
 ### **Multi-Source Intelligence**
 
-Choose from **5 different answer sources** with automatic fallback:
+Choose from **5 intelligent answer sources**:
 
-| Source | Description | Best For |
-|--------|-------------|----------|
-| 🔍 `rag` | Local documents via ChromaDB | Technical docs, manuals |
-| 🌐 `web` | Web-style comprehensive answers | Current trends, general knowledge |
-| 🧠 `direct` | Pure LLM knowledge | Concepts, explanations |
-| 🔄 `auto` | Smart fallback (RAG→Web→Direct) | Unknown topic types |
-| 🔀 `all` | Compare all sources | Research, multiple perspectives |
+| Source | Description | Best For | When to Use |
+|--------|-------------|----------|-------------|
+| 🤖 `smart` | AI tests multiple sources, picks best | **Default - best overall results** | **Daily use - always gives optimal answer** |
+| 🔍 `rag` | Local documents via ChromaDB | Technical docs, manuals | Force local docs when you know info is in your files |
+| 🌐 `web` | Web search for real-time information | Current events, latest news | Force web search for breaking news/current info |
+| 🧠 `direct` | Pure LLM knowledge | Concepts, explanations | Force LLM for general concepts and theory |
+| 🔀 `all` | Compare all sources | Research, multiple perspectives | **Research mode - compare different viewpoints** |
+
+### **🎯 Smart vs All: Key Differences**
+
+- **Smart Mode**: Tests multiple sources and **shows you ONE best answer** with scoring
+  - Use for: Daily queries when you want the optimal response quickly
+  - Output: Single best-scoring answer with reasoning
+  
+- **All Mode**: Tests all sources and **shows ALL answers side-by-side**
+  - Use for: Research when you want to compare different perspectives  
+  - Output: Complete results from RAG, Web, and Direct LLM
 
 ### **Usage Examples**
 
 ```bash
-# 🔍 Default RAG search (local documents)
+# 🤖 Smart mode (default - tests multiple sources, picks best)
 python query_data.py "What are the key features of BlueField-3?"
 
-# 🌐 Web-style comprehensive answers
+# 🔍 Local documents only
+python query_data.py "OpenShift troubleshooting steps" --source rag
+
+# 🌐 Web search for current information
 python query_data.py "What is the latest in AI technology?" --source web
 
 # 🧠 Direct LLM knowledge
 python query_data.py "Explain quantum computing" --source direct
-
-# 🔄 Smart auto-fallback mode
-python query_data.py "Machine learning concepts" --source auto
 
 # 🔀 Compare all sources
 python query_data.py "What is DOCA framework?" --source all
@@ -74,8 +84,8 @@ Arguments:
   QUERY                     Your question or search term
 
 Options:
-  --source {rag,web,direct,auto,all}
-                            Choose answer source (default: rag)
+  --source {rag,web,direct,smart,all}
+                            Choose answer source (default: smart)
   --fallback               Enable fallback to other sources if primary fails
   -h, --help               Show help and examples
 ```
