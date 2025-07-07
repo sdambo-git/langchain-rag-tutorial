@@ -156,4 +156,3 @@ python query_data.py "BlueField-3 vs other DPUs" --source auto
 --help           # Show all options
 ```
 
-Your RAG system is now a **powerful multi-source knowledge system**! 🚀 
